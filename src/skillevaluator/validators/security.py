@@ -175,7 +175,14 @@ _SKILLSPECTOR_AWS_ENV_NAMES = frozenset(
     }
 )
 _SKILLSPECTOR_EXPLICIT_PROVIDER_ENV = {
-    "anthropic": frozenset({"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"}),
+    "anthropic": frozenset(
+        {
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_BASE_URL",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+        }
+    ),
     "bedrock": _SKILLSPECTOR_AWS_ENV_NAMES,
     "openai": frozenset({"OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_PROJECT_ID"}),
 }

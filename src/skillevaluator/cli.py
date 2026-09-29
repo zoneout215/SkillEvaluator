@@ -580,6 +580,7 @@ def _run_agent_eval_or_skip(
     *,
     agents: str | None,
     env_mode: str,
+    auth_mode: str | None = None,
     skip_baseline: bool,
     n_concurrent: int | None,
     max_agents: int | None,
@@ -632,6 +633,7 @@ def _run_agent_eval_or_skip(
         skill_path=target_path,
         agents=agents,
         env_mode=env_mode,
+        auth_mode=auth_mode,
         skip_baseline=skip_baseline,
         n_concurrent=n_concurrent,
         max_agents=max_agents,
@@ -913,6 +915,8 @@ def _catalog_child_argv_from_ctx(ctx: click.Context, skill_dir: Path, output_dir
     env_mode = params.get("env_mode", "docker")
     if env_mode != "docker":
         argv.extend(["--env-mode", str(env_mode)])
+    if params.get("auth_mode"):
+        argv.extend(["--auth-mode", str(params["auth_mode"])])
     if params.get("skip_baseline"):
         argv.append("--skip-baseline")
     if params.get("n_concurrent") is not None:
@@ -1481,6 +1485,14 @@ def _print_run_banner(target_path: Path, content_type: str, profile: str | None)
     help="Harbor environment backend.",
 )
 @click.option(
+    "--auth-mode",
+    type=click.Choice(["auto", "api_key", "oauth"]),
+    default=None,
+    cls=GroupedOption,
+    help_group=_TIER3_GROUP,
+    help="Anthropic authentication mode [default: auto; may also be set by harbor.auth_mode].",
+)
+@click.option(
     "--skip-baseline",
     is_flag=True,
     cls=GroupedOption,
@@ -1638,6 +1650,7 @@ def validate(
     autopilot: bool | None,
     agents: str | None,
     env_mode: str,
+    auth_mode: str | None,
     skip_baseline: bool,
     n_concurrent: int | None,
     max_agents: int | None,
@@ -1898,6 +1911,7 @@ def validate(
             tier3_path,
             agents=agents,
             env_mode=env_mode,
+            auth_mode=auth_mode,
             skip_baseline=skip_baseline,
             n_concurrent=n_concurrent,
             max_agents=max_agents,
@@ -2417,6 +2431,12 @@ def _tier2_workflow(
 )
 @click.option("--env-mode", default="docker", show_default=True, type=ENV_MODE_CHOICE)
 @click.option(
+    "--auth-mode",
+    type=click.Choice(["auto", "api_key", "oauth"]),
+    default=None,
+    help="Anthropic authentication mode [default: auto; may also be set by harbor.auth_mode].",
+)
+@click.option(
     "--autopilot",
     is_flag=True,
     help="Create one eval case when no dataset/task source exists, then evaluate.",
@@ -2477,6 +2497,7 @@ def evaluate(
     skill_path: Path,
     agents: str | None,
     env_mode: str,
+    auth_mode: str | None,
     autopilot: bool,
     skip_baseline: bool,
     n_attempts: int | None,
@@ -2522,6 +2543,7 @@ def evaluate(
         skill_path=skill_path,
         agents=agents,
         env_mode=env_mode,
+        auth_mode=auth_mode,
         skip_baseline=skip_baseline,
         n_attempts=n_attempts,
         pass_threshold=pass_threshold,
@@ -2734,13 +2756,20 @@ def models_command(limit: int, as_json: bool) -> None:
     ),
 )
 @click.option("--env-mode", default="docker", show_default=True, type=ENV_MODE_CHOICE)
+@click.option("--auth-mode", type=click.Choice(["auto", "api_key", "oauth"]), default="auto", show_default=True)
 @click.option("--agent-model", multiple=True, help="Per-agent model override, AGENT=MODEL.")
 @click.option(
     "--verify-models",
     is_flag=True,
     help="Check resolved agent-model catalog reachability with a live credential-bearing request.",
 )
-def doctor(agents: str | None, env_mode: str, agent_model: tuple[str, ...], verify_models: bool) -> None:
+def doctor(
+    agents: str | None,
+    env_mode: str,
+    auth_mode: str,
+    agent_model: tuple[str, ...],
+    verify_models: bool,
+) -> None:
     """Check live-evaluation runtime readiness."""
     from skillevaluator.tier3.commands import doctor as tier3_doctor
 
@@ -2748,6 +2777,7 @@ def doctor(agents: str | None, env_mode: str, agent_model: tuple[str, ...], veri
         tier3_doctor(
             agents=agents,
             env_mode=env_mode,
+            auth_mode=auth_mode,
             verify_models=verify_models,
             agent_model=agent_model,
         )

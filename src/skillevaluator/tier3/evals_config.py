@@ -20,6 +20,7 @@ from skillevaluator.tier3.harbor import canonical_agent_name
 CONFIG_FILENAMES = ("config.yml", "config.yaml")
 HARBOR_CUSTOM_DOCKERFILE_MODES = {"preserve", "rebase"}
 HARBOR_BASE_IMAGE_MODES = {"reuse", "rebuild", "disabled"}
+ANTHROPIC_AUTH_MODES = {"auto", "api_key", "oauth"}
 SKILL_WORKSPACE_MODES = {"isolated", "group"}
 # Legacy grading-mode spellings stay accepted API surface; loading normalizes
 # them so the engine only ever sees the current names.
@@ -48,6 +49,7 @@ _HARBOR_KEYS = {
     "passthrough_env",
     "setup_commands",
     "agents",
+    "auth_mode",
 }
 HARBOR_TASK_SOURCES = {"auto", "evals_json", "native_harbor"}
 _AGENT_KEYS = {"model"}
@@ -117,6 +119,13 @@ def _validate_config(raw: dict[str, Any], config_path: Path) -> dict[str, Any]:
             raise EvalsConfigError(f"{config_path}: unknown harbor key(s): {', '.join(sorted(unknown_harbor))}")
 
         harbor: dict[str, Any] = {}
+        if "auth_mode" in harbor_raw:
+            harbor["auth_mode"] = _enum(
+                harbor_raw["auth_mode"],
+                ANTHROPIC_AUTH_MODES,
+                config_path,
+                "harbor.auth_mode",
+            )
         if "task_source" in harbor_raw:
             harbor["task_source"] = _enum(
                 harbor_raw["task_source"],

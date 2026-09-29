@@ -548,10 +548,17 @@ def _request_settings(config: ProviderConfig) -> tuple[str, dict[str, str]]:
 
     if config.provider == "anthropic":
         base_url = config.base_url or _ANTHROPIC_BASE_URL
-        return _provider_url(base_url, ensure_v1=True), {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        }
+        headers = {"anthropic-version": "2023-06-01"}
+        if config.auth_mode == "oauth":
+            headers.update(
+                {
+                    "Authorization": "Bearer " + api_key,
+                    "anthropic-beta": "oauth-2025-04-20",
+                }
+            )
+        else:
+            headers["x-api-key"] = api_key
+        return _provider_url(base_url, ensure_v1=True), headers
 
     if not config.base_url:
         raise ModelCatalogError(

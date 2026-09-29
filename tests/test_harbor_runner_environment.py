@@ -53,6 +53,39 @@ def test_docker_opencode_nv_build_uses_operator_key_without_skill_runtime_env(
     assert "OPENAI_API_KEY" not in plan.subprocess_env
 
 
+def test_claude_oauth_runtime_plan_scrubs_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = ProviderConfig(
+        provider="anthropic",
+        model="claude-test",
+        api_key="test-oauth-token",
+        base_url=None,
+        litellm_model="anthropic/claude-test",
+        auth_mode="oauth",
+    )
+    monkeypatch.setattr(
+        runner.os,
+        "environ",
+        {
+            "PATH": "/usr/bin",
+            "ANTHROPIC_API_KEY": "must-not-leak",
+            "CLAUDE_CODE_OAUTH_TOKEN": "test-oauth-token",
+        },
+    )
+
+    plan = runner._resolve_agent_runtime_plan(
+        provider=provider,
+        agents=["claude-code"],
+        models={"claude-code": "claude-test"},
+        configured_runtime_env={},
+        env_mode="docker",
+        auth_mode="oauth",
+    )["claude-code"]
+
+    assert plan.staged_env == {"CLAUDE_CODE_OAUTH_TOKEN": "${CLAUDE_CODE_OAUTH_TOKEN}"}
+    assert plan.subprocess_env["CLAUDE_CODE_OAUTH_TOKEN"] == "test-oauth-token"
+    assert "ANTHROPIC_API_KEY" not in plan.subprocess_env
+
+
 @pytest.mark.parametrize(
     ("provider_name", "runtime_model", "catalog_model", "litellm_prefix"),
     [
@@ -147,7 +180,9 @@ def test_nvidia_build_docker_bridge_plan_keeps_provider_key_out_of_task_env(agen
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
         "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_OAUTH_TOKEN",
     ],
 )
 def test_skill_config_cannot_override_operator_owned_agent_credentials(owned_name: str) -> None:
@@ -168,7 +203,9 @@ def test_skill_config_cannot_override_operator_owned_agent_credentials(owned_nam
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
         "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_OAUTH_TOKEN",
         "LLM_JUDGE_MODEL",
         "SKILL_EVAL_JUDGE_MODEL",
         "AWS_SECRET_ACCESS_KEY",

@@ -130,8 +130,8 @@ updated selections of the latest models. To select a different evaluator model:
 export SKILL_EVAL_LLM_MODEL='your-provider-model-id'
 ```
 
-The standard judge inherits that model unless overridden. Tier 3 defaults to
-OpenCode for NVIDIA Build, Codex for OpenAI, and Claude Code for Anthropic.
+The standard judge inherits that model unless overridden. Tier 3 defaults:
+NVIDIA Build=OpenCode, OpenAI=Codex, Anthropic=Claude Code (API key/OAuth).
 Use `--agents` and `--agent-model` to override the agent and its model separately.
 
 Anthropic and Bedrock need a separate embedding provider for Tier 2. Custom

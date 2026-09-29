@@ -26,6 +26,7 @@ class EvaluationOptions:
     skill_path: Path
     agents: str | None = None
     env_mode: str = "docker"
+    auth_mode: str | None = None
     skip_baseline: bool = False
     n_attempts: int | None = None
     pass_threshold: float | None = None

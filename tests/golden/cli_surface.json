@@ -276,6 +276,19 @@
           "param_type": "option"
         },
         {
+          "choices": [
+            "auto",
+            "api_key",
+            "oauth"
+          ],
+          "default": "auto",
+          "name": "auth_mode",
+          "opts": [
+            "--auth-mode"
+          ],
+          "param_type": "option"
+        },
+        {
           "multiple": true,
           "name": "agent_model",
           "opts": [
@@ -339,6 +352,18 @@
           "name": "env_mode",
           "opts": [
             "--env-mode"
+          ],
+          "param_type": "option"
+        },
+        {
+          "choices": [
+            "auto",
+            "api_key",
+            "oauth"
+          ],
+          "name": "auth_mode",
+          "opts": [
+            "--auth-mode"
           ],
           "param_type": "option"
         },
@@ -2075,6 +2100,19 @@
               "param_type": "option"
             },
             {
+              "choices": [
+                "auto",
+                "api_key",
+                "oauth"
+              ],
+              "default": "auto",
+              "name": "auth_mode",
+              "opts": [
+                "--auth-mode"
+              ],
+              "param_type": "option"
+            },
+            {
               "multiple": true,
               "name": "agent_model",
               "opts": [
@@ -2138,6 +2176,18 @@
               "name": "env_mode",
               "opts": [
                 "--env-mode"
+              ],
+              "param_type": "option"
+            },
+            {
+              "choices": [
+                "auto",
+                "api_key",
+                "oauth"
+              ],
+              "name": "auth_mode",
+              "opts": [
+                "--auth-mode"
               ],
               "param_type": "option"
             },
@@ -2623,6 +2673,18 @@
             "name": "env_mode",
             "opts": [
               "--env-mode"
+            ],
+            "param_type": "option"
+          },
+          {
+            "choices": [
+              "auto",
+              "api_key",
+              "oauth"
+            ],
+            "name": "auth_mode",
+            "opts": [
+              "--auth-mode"
             ],
             "param_type": "option"
           },
@@ -3121,6 +3183,18 @@
           "name": "env_mode",
           "opts": [
             "--env-mode"
+          ],
+          "param_type": "option"
+        },
+        {
+          "choices": [
+            "auto",
+            "api_key",
+            "oauth"
+          ],
+          "name": "auth_mode",
+          "opts": [
+            "--auth-mode"
           ],
           "param_type": "option"
         },

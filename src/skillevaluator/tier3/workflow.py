@@ -102,11 +102,12 @@ def _preflight_options(skill_path: Path, params: dict[str, Any]) -> None:
         _workspace_skills,
     )
 
-    provider = resolve_llm_provider()
     config, config_path = load_evals_config(skill_path)
     effective = deepcopy(config)
     effective.setdefault("schema_version", 1)
     harbor = effective.setdefault("harbor", {})
+    if params.get("auth_mode") is not None:
+        harbor["auth_mode"] = params["auth_mode"]
     for name in (
         "n_attempts",
         "pass_threshold",
@@ -126,6 +127,8 @@ def _preflight_options(skill_path: Path, params: dict[str, Any]) -> None:
         if params.get(cli_name) is not None:
             effective.setdefault(group, {})["mode"] = params[cli_name]
     _validate_config(effective, config_path or skill_path / "evals" / "config.yml")
+    auth_mode = harbor.get("auth_mode", "auto")
+    provider = resolve_llm_provider() if auth_mode == "auto" else resolve_llm_provider(auth_mode=auth_mode)
     if harbor.get("stop_on_pass", False) and harbor.get("n_attempts", 1) == 1:
         raise ValueError("stop_on_pass requires n_attempts > 1")
 

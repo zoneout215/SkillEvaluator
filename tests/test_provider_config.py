@@ -10,7 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from skillevaluator.provider_config import ProviderConfigurationError, resolve_embedding_provider, resolve_llm_provider
+from skillevaluator.provider_config import (
+    ProviderConfigurationError,
+    resolve_anthropic_auth,
+    resolve_embedding_provider,
+    resolve_llm_provider,
+)
 
 PROVIDER_CONTRACT = Path(__file__).parent / "fixtures" / "public_provider_contract.json"
 
@@ -46,6 +51,51 @@ def test_anthropic_provider_uses_claude_opus_5_by_default() -> None:
 
     assert config.model == "claude-opus-5"
     assert config.litellm_model == "anthropic/claude-opus-5"
+
+
+def test_anthropic_auth_auto_prefers_api_key_over_oauth() -> None:
+    auth = resolve_anthropic_auth(
+        {
+            "ANTHROPIC_API_KEY": "test-api-key",
+            "CLAUDE_CODE_OAUTH_TOKEN": "test-oauth-token",
+        }
+    )
+
+    assert (auth.mode, auth.token, auth.source_env) == ("api_key", "test-api-key", "ANTHROPIC_API_KEY")
+
+
+@pytest.mark.parametrize("variable", ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"])
+def test_anthropic_auth_resolves_oauth_aliases(variable: str) -> None:
+    auth = resolve_anthropic_auth({variable: "test-oauth-token"})
+
+    assert (auth.mode, auth.token, auth.source_env) == ("oauth", "test-oauth-token", variable)
+
+
+def test_anthropic_auth_explicit_oauth_overrides_api_key_and_scrubs_child_env() -> None:
+    auth = resolve_anthropic_auth(
+        {
+            "ANTHROPIC_API_KEY": "test-api-key",
+            "ANTHROPIC_AUTH_TOKEN": "test-oauth-token",
+        },
+        "oauth",
+    )
+
+    child = auth.child_environment(
+        {
+            "PATH": "/bin",
+            "ANTHROPIC_API_KEY": "test-api-key",
+            "ANTHROPIC_AUTH_TOKEN": "stale-token",
+        }
+    )
+    assert child == {"PATH": "/bin", "CLAUDE_CODE_OAUTH_TOKEN": "test-oauth-token"}
+
+
+def test_anthropic_auth_reports_missing_credentials() -> None:
+    with pytest.raises(
+        ProviderConfigurationError,
+        match="ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN",
+    ):
+        resolve_anthropic_auth({})
 
 
 def test_bedrock_provider_uses_claude_opus_5_us_profile_by_default() -> None:
