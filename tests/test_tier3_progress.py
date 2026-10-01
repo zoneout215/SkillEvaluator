@@ -1061,7 +1061,9 @@ def test_oauth_mode_is_preserved_for_standard_grader_catalog_probe(
         model_probe=probe,
         provider_name="anthropic",
     )
-    runner.resolve_llm_provider().auth_mode = "oauth"
+    provider = runner.resolve_llm_provider()
+    provider.auth_mode = "oauth"
+    provider.child_environment = lambda: {"CLAUDE_CODE_OAUTH_TOKEN": provider.api_key}
     monkeypatch.setattr(
         runner,
         "_provider_environment",
@@ -1074,7 +1076,7 @@ def test_oauth_mode_is_preserved_for_standard_grader_catalog_probe(
     result = runner.run_harbor_eval(
         skill,
         ["claude-code"],
-        agent_models={"claude-code": "anthropic/claude-sonnet-4-5"},
+        agent_models={"claude-code": "claude-sonnet-4-5"},
         output_dir=tmp_path / "results",
         agent_runtime_preflight=False,
     )
@@ -1095,7 +1097,7 @@ def test_oauth_mode_is_preserved_for_standard_grader_catalog_probe(
         for target in result["run_config"]["credential_validation"]["targets"]
         if target["labels"] == ["standard grader"]
     )
-    assert grader_target["status"] == "inconclusive"
+    assert grader_target["status"] == "degraded"
     assert "skipping catalog verification" in grader_target["detail"]
 
 
