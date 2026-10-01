@@ -33,7 +33,14 @@ def _chat_enabled(requested: bool | None) -> bool:
         return False
     configured = any(
         os.environ.get(name)
-        for name in ("SKILL_EVAL_LLM_PROVIDER", "NVIDIA_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+        for name in (
+            "SKILL_EVAL_LLM_PROVIDER",
+            "NVIDIA_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "ANTHROPIC_AUTH_TOKEN",
+        )
     )
     if requested is None and not configured:
         return False

@@ -16,6 +16,7 @@ def test_load_evals_config_valid_harbor_policy(tmp_path):
 schema_version: 1
 
 harbor:
+  auth_mode: oauth
   task_source: native_harbor
   custom_dockerfile_mode: preserve
   n_attempts: 3
@@ -47,6 +48,7 @@ grading:
 
     assert path == skill / "evals" / "config.yml"
     assert config["harbor"]["task_source"] == "native_harbor"
+    assert config["harbor"]["auth_mode"] == "oauth"
     assert config["harbor"]["custom_dockerfile_mode"] == "preserve"
     assert config["harbor"]["n_attempts"] == 3
     assert config["harbor"]["pass_threshold"] == 0.60

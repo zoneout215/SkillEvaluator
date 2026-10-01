@@ -74,6 +74,25 @@ The same agent, model, environment, grading, and reporting options described for
 skillevaluator tier3 ./my-skill --agents opencode --env-mode docker
 ```
 
+### Use an Anthropic OAuth token
+
+Claude subscription tokens created by `claude setup-token` can authenticate both
+the Anthropic evaluator and Claude Code:
+
+```bash
+export SKILL_EVAL_LLM_PROVIDER=anthropic
+export CLAUDE_CODE_OAUTH_TOKEN='your-oauth-token'
+skillevaluator tier3 ./my-skill --auth-mode oauth
+```
+
+`ANTHROPIC_AUTH_TOKEN` is accepted as an alternate token name. The default
+`--auth-mode auto` preserves existing behavior by preferring
+`ANTHROPIC_API_KEY`, then `CLAUDE_CODE_OAUTH_TOKEN`, then
+`ANTHROPIC_AUTH_TOKEN`. Set `harbor.auth_mode` to `api_key`, `oauth`, or `auto`
+in `evals/config.yml` for a per-skill default; an explicit CLI value wins.
+OAuth runs pass only `CLAUDE_CODE_OAUTH_TOKEN` to Claude Code and remove
+`ANTHROPIC_API_KEY` from its child environment.
+
 `tier3 evaluate` remains available for explicit execution; its missing-source
 generation requires `--autopilot`. To prepare and review a fuller dataset before
 running, follow the steps below.

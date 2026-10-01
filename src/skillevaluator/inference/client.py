@@ -28,6 +28,7 @@ from skillevaluator.constants import LLM_VERIFY_MODEL, LLM_VERIFY_TEMPERATURE
 from skillevaluator.inference.types import EmptyLLMResponseError, LLMClientError
 from skillevaluator.logging_config import get_logger
 from skillevaluator.provider_config import (
+    ANTHROPIC_OAUTH_BETA,
     OPENAI_BASE_URL,
     ProviderConfig,
     ProviderConfigurationError,
@@ -208,7 +209,14 @@ class LLMClient:
                 raise LLMClientError(
                     "The 'anthropic' package is required for Anthropic LLM operations. Install with: pip install 'skillevaluator[llm]'"
                 ) from exc
-            client_kwargs: dict[str, Any] = {"api_key": config.api_key}
+            client_kwargs: dict[str, Any]
+            if config.auth_mode == "oauth":
+                client_kwargs = {
+                    "auth_token": config.api_key,
+                    "default_headers": {"anthropic-beta": ANTHROPIC_OAUTH_BETA},
+                }
+            else:
+                client_kwargs = {"api_key": config.api_key}
             if config.base_url:
                 client_kwargs["base_url"] = config.base_url
             self._client = Anthropic(**client_kwargs)

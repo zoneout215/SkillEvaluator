@@ -128,6 +128,8 @@ _CREDENTIAL_ENV_VARS = (
     "OPENAI_API_KEY",
     "NVIDIA_API_KEY",
     "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_AUTH_TOKEN",
     "SKILL_EVAL_LLM_API_KEY",
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -1322,7 +1324,10 @@ def _configured_public_providers():
     providers = []
     if os.environ.get("OPENAI_API_KEY"):
         providers.append("openai")
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if any(
+        os.environ.get(name)
+        for name in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN")
+    ):
         providers.append("anthropic")
     if os.environ.get("NVIDIA_API_KEY"):
         providers.append("nv_build")
@@ -1495,8 +1500,9 @@ def _anthropic_url():
 
 def _call_anthropic(prompt, model, max_tokens, temperature):
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return None, "ANTHROPIC_API_KEY is required for the anthropic provider"
+    oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") or os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+    if not api_key and not oauth_token:
+        return None, "An Anthropic API key or OAuth token is required for the anthropic provider"
     payload = {
         "model": model,
         "max_tokens": max_tokens,
@@ -1505,14 +1511,19 @@ def _call_anthropic(prompt, model, max_tokens, temperature):
     }
     if temperature is not None and _supports_custom_temperature(model):
         payload["temperature"] = temperature
+    headers = {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+    }
+    if api_key:
+        headers["x-api-key"] = api_key
+    else:
+        headers["Authorization"] = "Bearer " + oauth_token
+        headers["anthropic-beta"] = "oauth-2025-04-20"
     request = urllib.request.Request(
         _anthropic_url(),
         data=json.dumps(payload).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
+        headers=headers,
     )
     # _anthropic_url() validates the configured base URL before this request.
     with urllib.request.urlopen(request, timeout=90) as response:  # nosec B310

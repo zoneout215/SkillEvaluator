@@ -37,6 +37,7 @@ from skillevaluator.provider_config import (
     ProviderConfig,
     ProviderConfigurationError,
     _normalize_anthropic_base_url,
+    resolve_anthropic_auth,
     resolve_llm_provider,
 )
 from skillevaluator.source_identity import normalized_evaluated_source
@@ -299,7 +300,9 @@ _RUNTIME_ENV_HOST_CONTROL_PREFIXES = (
 _OPERATOR_OWNED_AGENT_ENV = frozenset(
     {
         "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_OAUTH_TOKEN",
         "CLAUDE_CODE_USE_BEDROCK",
         "NVIDIA_API_KEY",
         "OPENAI_API_KEY",
@@ -483,7 +486,7 @@ def _provider_environment(config: ProviderConfig) -> dict[str, str]:
         {name: value for name in _VERIFIER_JUDGE_MODEL_ENV_VARS if (value := os.environ.get(name, "").strip())}
     )
     if config.provider == "anthropic":
-        environment["ANTHROPIC_API_KEY"] = config.api_key or ""
+        environment.update(config.child_environment())
         if config.base_url:
             environment["ANTHROPIC_BASE_URL"] = config.base_url
     elif config.provider == "bedrock":
@@ -505,7 +508,7 @@ def _local_agent_credentials(config: ProviderConfig) -> dict[str, str]:
     it maps to the OPENAI_* pair pointing at its base URL.
     """
     if config.provider == "anthropic":
-        env = {"ANTHROPIC_API_KEY": config.api_key or ""}
+        env = config.child_environment()
         if config.base_url:
             env["ANTHROPIC_BASE_URL"] = config.base_url
     else:  # openai, nv_build, or any OpenAI-compatible provider
@@ -575,10 +578,10 @@ def _validate_agent_provider_credentials(
                 ]
 
         if provider.provider == "openai" and "claude-code" in agents:
-            if not agent_runtime_env.get("ANTHROPIC_API_KEY", "").strip():
+            if not _has_anthropic_credential(agent_runtime_env):
                 return [
-                    "claude-code with the OpenAI evaluator provider requires an independent ANTHROPIC_API_KEY "
-                    "in the operator host environment."
+                    "claude-code with the OpenAI evaluator provider requires an independent ANTHROPIC_API_KEY in the "
+                    "operator host environment."
                 ]
             if model_sources.get("claude-code", "public provider default") == "public provider default":
                 return [
@@ -641,10 +644,11 @@ def _validate_agent_provider_credentials(
         return []
 
     if "claude-code" in agents:
-        if not agent_runtime_env.get("ANTHROPIC_API_KEY", "").strip():
+        if not _has_anthropic_credential(agent_runtime_env):
             return [
-                "claude-code with NVIDIA Build requires an independent ANTHROPIC_API_KEY in the agent runtime "
-                "environment; NVIDIA_API_KEY is not an Anthropic credential."
+                "claude-code with NVIDIA Build requires an independent ANTHROPIC_API_KEY or OAuth token "
+                "(CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_AUTH_TOKEN) in the agent runtime environment; "
+                "NVIDIA_API_KEY is not an Anthropic credential."
             ]
         model_source = (agent_model_sources or {}).get("claude-code", "public provider default")
         if model_source == "public provider default":
@@ -850,11 +854,18 @@ def _harbor_subprocess_environment(
     return environment
 
 
-def _independent_anthropic_agent_credentials() -> dict[str, str]:
+def _has_anthropic_credential(environment: Mapping[str, str]) -> bool:
+    return any(
+        environment.get(name, "").strip()
+        for name in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN")
+    )
+
+
+def _independent_anthropic_agent_credentials(auth_mode: str | None = "auto") -> dict[str, str]:
     """Resolve and validate a host-owned Anthropic credential pair."""
-    credentials = {
-        name: os.environ.get(name, "") for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL") if os.environ.get(name)
-    }
+    credentials: dict[str, str] = {}
+    if os.environ.get("ANTHROPIC_BASE_URL"):
+        credentials["ANTHROPIC_BASE_URL"] = os.environ["ANTHROPIC_BASE_URL"]
     if base_url := credentials.get("ANTHROPIC_BASE_URL"):
         normalized_base_url = _normalize_anthropic_base_url(
             base_url,
@@ -864,18 +875,38 @@ def _independent_anthropic_agent_credentials() -> dict[str, str]:
             credentials.pop("ANTHROPIC_BASE_URL")
         else:
             credentials["ANTHROPIC_BASE_URL"] = normalized_base_url
+    try:
+        auth = resolve_anthropic_auth(os.environ, auth_mode)
+    except ProviderConfigurationError:
+        if auth_mode not in {None, "auto"}:
+            raise
+    else:
+        credentials.update(auth.child_environment())
     return credentials
 
 
-def _gateway_anthropic_agent_credentials(provider: ProviderConfig) -> dict[str, str]:
+def _gateway_anthropic_agent_credentials(
+    provider: ProviderConfig,
+    auth_mode: str | None = "auto",
+) -> dict[str, str]:
     """Use a shared gateway unless the operator selected a separate Claude route.
 
     A standalone Anthropic key keeps its native endpoint, so a native key is
     never silently sent to the shared gateway. An explicit base URL without a
     separate key selects another API root on the operator's gateway.
     """
-    credentials = _independent_anthropic_agent_credentials()
-    if credentials.get("ANTHROPIC_API_KEY", "").strip():
+    credentials: dict[str, str] = {}
+    if raw_base_url := os.environ.get("ANTHROPIC_BASE_URL"):
+        normalized = _normalize_anthropic_base_url(raw_base_url, variable="ANTHROPIC_BASE_URL")
+        if normalized:
+            credentials["ANTHROPIC_BASE_URL"] = normalized
+    try:
+        auth = resolve_anthropic_auth(os.environ, auth_mode)
+    except ProviderConfigurationError:
+        if auth_mode not in {None, "auto"}:
+            raise
+    else:
+        credentials.update(auth.child_environment())
         return credentials
     base_url = credentials.get("ANTHROPIC_BASE_URL")
     if not base_url:
@@ -949,6 +980,7 @@ def _agent_credentials(
     provider: ProviderConfig,
     agent: str,
     env_mode: str,
+    auth_mode: str | None = "auto",
 ) -> dict[str, str]:
     """Resolve operator-owned credentials for exactly one agent runtime."""
     if provider.provider == "nv_build":
@@ -962,7 +994,7 @@ def _agent_credentials(
             # sentinel and must not inherit NVIDIA_API_KEY in task env.
             return {}
         if agent == "claude-code":
-            return _independent_anthropic_agent_credentials()
+            return _independent_anthropic_agent_credentials(auth_mode)
         if agent == "codex":
             return {
                 name: os.environ.get(name, "") for name in ("OPENAI_API_KEY", "OPENAI_BASE_URL") if os.environ.get(name)
@@ -970,23 +1002,16 @@ def _agent_credentials(
         return {}
 
     if provider.provider == "openai-compatible" and agent == "claude-code":
-        return _gateway_anthropic_agent_credentials(provider)
+        return _gateway_anthropic_agent_credentials(provider, auth_mode)
     if provider.provider == "openai" and agent == "claude-code":
-        return _independent_anthropic_agent_credentials()
+        return _independent_anthropic_agent_credentials(auth_mode)
     if provider.provider == "anthropic" and agent == "codex":
         return {
             name: os.environ.get(name, "") for name in ("OPENAI_API_KEY", "OPENAI_BASE_URL") if os.environ.get(name)
         }
 
     if provider.provider == "anthropic" and agent in {"claude-code", "opencode"}:
-        return {
-            name: value
-            for name, value in {
-                "ANTHROPIC_API_KEY": provider.api_key or "",
-                "ANTHROPIC_BASE_URL": provider.base_url or "",
-            }.items()
-            if value
-        }
+        return provider.child_environment()
     if provider.provider in {"openai", "openai-compatible"} and agent in {"codex", "opencode"}:
         return {
             name: value
@@ -1019,9 +1044,10 @@ def _agent_provider_config(
         return ProviderConfig(
             provider="anthropic",
             model=resolved_model,
-            api_key=credentials.get("ANTHROPIC_API_KEY"),
+            api_key=credentials.get("ANTHROPIC_API_KEY") or credentials.get("CLAUDE_CODE_OAUTH_TOKEN"),
             base_url=credentials.get("ANTHROPIC_BASE_URL"),
             litellm_model=f"anthropic/{resolved_model}",
+            auth_mode="oauth" if credentials.get("CLAUDE_CODE_OAUTH_TOKEN") else "api_key",
         )
     if evaluator_provider.provider == "anthropic" and agent == "codex":
         resolved_model = model.removeprefix("openai/")
@@ -1045,9 +1071,10 @@ def _agent_provider_config(
         return ProviderConfig(
             provider="anthropic",
             model=resolved_model,
-            api_key=credentials.get("ANTHROPIC_API_KEY"),
+            api_key=credentials.get("ANTHROPIC_API_KEY") or credentials.get("CLAUDE_CODE_OAUTH_TOKEN"),
             base_url=credentials.get("ANTHROPIC_BASE_URL"),
             litellm_model=f"anthropic/{resolved_model}",
+            auth_mode="oauth" if credentials.get("CLAUDE_CODE_OAUTH_TOKEN") else "api_key",
         )
     if (
         evaluator_provider.provider == "nv_build"
@@ -1098,6 +1125,7 @@ def _resolve_agent_runtime_plan(
     configured_runtime_env: Mapping[str, str],
     env_mode: str,
     model_sources: Mapping[str, str] | None = None,
+    auth_mode: str | None = "auto",
 ) -> dict[str, AgentRuntimePlan]:
     """Resolve the single credential plan used by staging and execution.
 
@@ -1121,7 +1149,7 @@ def _resolve_agent_runtime_plan(
     }
     plans: dict[str, AgentRuntimePlan] = {}
     for agent in agents:
-        credentials = _agent_credentials(provider=provider, agent=agent, env_mode=env_mode)
+        credentials = _agent_credentials(provider=provider, agent=agent, env_mode=env_mode, auth_mode=auth_mode)
         validation_env = {**configured_runtime_env, **credentials}
         credential_errors = _validate_agent_provider_credentials(
             provider,
@@ -1221,7 +1249,7 @@ def _model_for_agent(
             selected, source = GATEWAY_AGENT_DEFAULT_MODELS[agent], "openai-compatible agent default"
             if agent == "claude-code":
                 credentials = _independent_anthropic_agent_credentials()
-                if credentials.get("ANTHROPIC_API_KEY", "").strip() and not credentials.get("ANTHROPIC_BASE_URL"):
+                if _has_anthropic_credential(credentials) and not credentials.get("ANTHROPIC_BASE_URL"):
                     selected, source = CHAT_DEFAULT_ANTHROPIC, "native Anthropic agent default"
         else:
             selected, source = provider.model, "public provider default"
@@ -1841,6 +1869,7 @@ def _run_harbor_eval_impl(
     agent_runtime_preflight: bool | None = None,
     env_mode: str = DEFAULT_ENV_MODE,
     env_mode_source: str = "CLI",
+    auth_mode: str | None = None,
     timeout_multiplier: float | None = None,
     override_cpus: int | None = None,
     override_memory_mb: int | None = None,
@@ -1886,13 +1915,18 @@ def _run_harbor_eval_impl(
     evaluator_skill_path = _evaluator_skill_path
 
     try:
-        provider = resolve_llm_provider()
         config, config_path = load_evals_config(evaluator_skill_path)
+        harbor_config = config.get("harbor", {})
+        effective_auth_mode = auth_mode if auth_mode is not None else harbor_config.get("auth_mode", "auto")
+        provider = (
+            resolve_llm_provider()
+            if effective_auth_mode == "auto"
+            else resolve_llm_provider(auth_mode=effective_auth_mode)
+        )
     except (ProviderConfigurationError, EvalsConfigError) as exc:
         reporter.emit(ProgressEvent(stage="configuration", state="failed", detail=str(exc)))
         return {"error": [str(exc)]}
 
-    harbor_config = config.get("harbor", {})
     workspace_config = config.get("skill_workspace", {})
     grading_config = config.get("grading", {})
     n_attempts = n_attempts if n_attempts is not None else harbor_config.get("n_attempts", 1)
@@ -2011,6 +2045,7 @@ def _run_harbor_eval_impl(
             configured_runtime_env=configured_runtime_env,
             env_mode=env_mode,
             model_sources={agent: details["source"] for agent, details in model_resolution.items()},
+            auth_mode=effective_auth_mode,
         )
     except ValueError as exc:
         reporter.emit(ProgressEvent(stage="credential-validation", state="failed", detail=str(exc)))

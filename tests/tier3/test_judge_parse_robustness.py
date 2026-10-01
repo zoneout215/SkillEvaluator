@@ -532,6 +532,36 @@ def test_template_anthropic_request_uses_model_compatible_temperature(monkeypatc
         assert captured["temperature"] == expected_temperature
 
 
+def test_template_anthropic_oauth_request_uses_bearer_beta_headers(monkeypatch):
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"content":[{"type":"text","text":"Done"}]}'
+
+    def fake_urlopen(request, timeout):
+        assert timeout == 90
+        captured.update(request.headers)
+        return Response()
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-oauth-token")
+    monkeypatch.setattr(eval_template.urllib.request, "urlopen", fake_urlopen)
+
+    content, error = eval_template._call_anthropic("prompt", "claude-test", 4096, None)
+
+    assert (content, error) == ("Done", None)
+    assert captured["Authorization"] == "Bearer " + "test-oauth-token"
+    assert captured["Anthropic-beta"] == "oauth-2025-04-20"
+    assert "X-api-key" not in captured
+
+
 @pytest.mark.parametrize(
     ("model", "expected_temperature"),
     [

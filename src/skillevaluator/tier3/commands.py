@@ -623,6 +623,7 @@ def evaluate(
     *,
     agents: str | None,
     env_mode: str,
+    auth_mode: str | None = None,
     skip_baseline: bool,
     n_attempts: int | None,
     pass_threshold: float | None,
@@ -648,10 +649,16 @@ def evaluate(
 ) -> dict[str, Any]:
     """Run Harbor live-agent evaluation for a skill."""
     env_mode = _engine_env_mode(env_mode)
+    config, _ = load_evals_config(skill_path)
+    effective_auth_mode = auth_mode if auth_mode is not None else config.get("harbor", {}).get("auth_mode", "auto")
 
     if agents is None:
         try:
-            provider = resolve_llm_provider()
+            provider = (
+                resolve_llm_provider()
+                if effective_auth_mode == "auto"
+                else resolve_llm_provider(auth_mode=effective_auth_mode)
+            )
         except ProviderConfigurationError as exc:
             raise ValueError(f"A public LLM provider is required for live evaluation: {exc}") from exc
         agent_list = resolve_agents(None, provider=provider.provider)
@@ -683,7 +690,11 @@ def evaluate(
 
         if agents is not None:
             try:
-                resolve_llm_provider()
+                (
+                    resolve_llm_provider()
+                    if effective_auth_mode == "auto"
+                    else resolve_llm_provider(auth_mode=effective_auth_mode)
+                )
             except ProviderConfigurationError as exc:
                 raise ValueError(f"A public LLM provider is required for live evaluation: {exc}") from exc
 
@@ -717,6 +728,7 @@ def evaluate(
             agent_runtime_preflight=agent_runtime_preflight,
             env_mode=env_mode,
             env_mode_source="CLI",
+            auth_mode=auth_mode,
             timeout_multiplier=timeout_multiplier,
             evaluated_source=evaluated_source,
             override_cpus=override_cpus,
@@ -738,6 +750,7 @@ def doctor(
     env_mode: str,
     verify_models: bool = False,
     agent_model: tuple[str, ...] = (),
+    auth_mode: str | None = None,
 ) -> int:
     """Check whether live evaluation dependencies are available."""
     env_mode = _engine_env_mode(env_mode)
@@ -749,7 +762,7 @@ def doctor(
     model_resolution: dict[str, tuple[str, str]] = {}
     runtime_plans: dict[str, Any] = {}
     try:
-        provider = resolve_llm_provider()
+        provider = resolve_llm_provider() if auth_mode in {None, "auto"} else resolve_llm_provider(auth_mode=auth_mode)
     except ProviderConfigurationError as exc:
         rows.append(("Public LLM provider", "fail", str(exc)))
     else:
@@ -789,6 +802,7 @@ def doctor(
                     configured_runtime_env={},
                     env_mode=env_mode,
                     model_sources={agent: details[1] for agent, details in model_resolution.items()},
+                    auth_mode=auth_mode,
                 )
             except ValueError as exc:
                 plan_error = str(exc)

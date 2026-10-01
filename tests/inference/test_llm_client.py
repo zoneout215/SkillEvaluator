@@ -65,6 +65,20 @@ class TestLLMClientInit:
 
 
 class TestLLMClientGetClient:
+    def test_anthropic_oauth_uses_bearer_client_and_beta_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SKILL_EVAL_LLM_PROVIDER", "anthropic")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        mock_anthropic = MagicMock()
+
+        with patch("anthropic.Anthropic", return_value=mock_anthropic) as mock_cls:
+            assert LLMClient()._get_client() is mock_anthropic
+
+        mock_cls.assert_called_once_with(
+            auth_token="test-oauth-token",
+            default_headers={"anthropic-beta": "oauth-2025-04-20"},
+        )
+
     def test_openai_provider_uses_public_openai_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SKILL_EVAL_LLM_PROVIDER", "openai")
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")

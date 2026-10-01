@@ -212,6 +212,7 @@ says *how* to run it. CLI flags always override config values.
 schema_version: 1
 
 harbor:
+  auth_mode: auto                # auto | api_key | oauth
   task_source: auto              # auto | evals_json | native_harbor
   custom_dockerfile_mode: preserve   # preserve | rebase
   n_attempts: 3
@@ -241,6 +242,7 @@ grading:
 | Key | Accepts | Effect |
 | --- | --- | --- |
 | `schema_version` | `1` | Required. Only version 1 is supported. |
+| `harbor.auth_mode` | `auto`, `api_key`, `oauth` | Anthropic credential selection for the evaluator and Claude Code. An explicit `--auth-mode` wins. |
 | `harbor.task_source` | `auto`, `evals_json`, `native_harbor` | Where cases come from: auto-detect, the eval dataset, or native Harbor tasks. |
 | `harbor.custom_dockerfile_mode` | `preserve`, `rebase` | How your custom Dockerfile is handled. |
 | `harbor.base_image_mode` | `reuse`, `rebuild`, `disabled` | Shared pre-built eval base image (Docker env mode only): reuse it across tasks, force a rebuild, or ship self-contained per-task Dockerfiles. Default: `disabled`. |
@@ -253,7 +255,7 @@ grading:
 | `harbor.agent_runtime_preflight` | boolean | Opt-in extra agent-only execution of the first staged task before the measured evaluation. Default: `false`; the CLI flag overrides this value. |
 | `harbor.agent_workdir` | string | Working directory for the agent inside the container. |
 | `harbor.resources` | `cpus`, `memory_mb`, `storage_mb` | Per-container resource requests. |
-| `harbor.runtime_env` | list or mapping | Non-credential task values passed into the container. Prefer a list of plain names — each expands to `${NAME}` from your shell; a mapping sets explicit templates. Entries that name or reference operator-owned credentials (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `NVIDIA_API_KEY`, base-URL variables, AWS credential variables) fail with a hard error. Alias: `passthrough_env`. |
+| `harbor.runtime_env` | list or mapping | Non-credential task values passed into the container. Prefer a list of plain names — each expands to `${NAME}` from your shell; a mapping sets explicit templates. Entries that name or reference operator-owned credentials (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN`, `NVIDIA_API_KEY`, base-URL variables, AWS credential variables) fail with a hard error. Alias: `passthrough_env`. |
 | `harbor.pre_agent_setup` | string or list | Shell commands run in the container before the agent starts. Alias: `setup_commands`. |
 | `harbor.agents.<name>.model` | string | Per-agent model override; whitespace is trimmed. `claude` is accepted as an alias of `claude-code`, but configuring both spellings in one config is an error. |
 | `skill_workspace.mode` | `isolated`, `group` | Whether sibling skills are visible — see [Agents & Sandboxes](agents-and-sandboxes.mdx). |

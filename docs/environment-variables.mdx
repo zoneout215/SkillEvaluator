@@ -33,6 +33,8 @@ These variables select and configure the provider used for LLM-backed checks and
 | `NVIDIA_API_KEY` | — | Credential for the `nv_build` provider (NVIDIA Build). |
 | `OPENAI_API_KEY` | — | Credential for the `openai` provider. |
 | `ANTHROPIC_API_KEY` | — | Credential for the `anthropic` provider. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | — | Anthropic OAuth token used by Tier 3 and Claude Code when no API key is selected. |
+| `ANTHROPIC_AUTH_TOKEN` | — | Alternate Anthropic OAuth token name. `CLAUDE_CODE_OAUTH_TOKEN` wins when both OAuth names are set. |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Alternate OpenAI endpoint; `SKILL_EVAL_LLM_BASE_URL` wins when both are set. |
 | `ANTHROPIC_BASE_URL` | Anthropic SDK default | Absolute HTTP(S) Anthropic API root. Accepts an unversioned root or a legacy terminal `/v1`; `SKILL_EVAL_LLM_BASE_URL` wins when both are set. |
 | `AWS_REGION` | `us-west-2` | Region for the `bedrock` provider. |
@@ -50,9 +52,12 @@ When `SKILL_EVAL_LLM_PROVIDER` is unset, auto-selection only happens when exactl
 
 - `NVIDIA_API_KEY` → `nv_build`
 - `OPENAI_API_KEY` → `openai`
-- `ANTHROPIC_API_KEY` → `anthropic`
+- `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, or `ANTHROPIC_AUTH_TOKEN` → `anthropic`
 
-If none is set, LLM-backed commands fail with a configuration error. If more than one is set, that is also a configuration error — there is no silent preference order, so set `SKILL_EVAL_LLM_PROVIDER` explicitly when multiple keys are exported.
+If none is set, LLM-backed commands fail with a configuration error. Within
+Anthropic credentials, API keys take precedence over OAuth tokens in `auto`
+mode. If credentials for more than one provider are set, that is a configuration
+error, so set `SKILL_EVAL_LLM_PROVIDER` explicitly.
 
 ### SkillSpector bridge
 
@@ -134,7 +139,8 @@ The `HARBOR_*` variables are read by your custom grader *inside* the task contai
 ## Set at runtime, not committed
 
 <Warning>
-Keep credentials out of skill repositories and CI configuration files. Export provider keys as masked secrets at runtime. Agent credentials for Tier 3 come only from the host environment — `evals/config.yml` `runtime_env` carries non-credential values, and any entry that names or references an operator-owned credential (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `NVIDIA_API_KEY`, their base-URL variables, `CLAUDE_CODE_USE_BEDROCK`, and the `AWS_*` credential variables) is rejected at run time, as are names that control the host process (`PATH`, `DOCKER_*`, proxy variables, `SKILLEVALUATOR_*`, and similar). See the blocked-names table in [Providers & Credentials](configuration.mdx#tier-3-credentials-two-roles). With NVIDIA Build, one exported `NVIDIA_API_KEY` covers both the evaluator and the agents in the `docker` and `local` env-modes.
+Keep credentials out of skill repositories and CI configuration files. Export provider keys as masked secrets at runtime. Agent credentials for Tier 3 come only from the host environment — `evals/config.yml` `runtime_env` carries non-credential values, and any entry that names or references an operator-owned credential (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
+`ANTHROPIC_AUTH_TOKEN`, `NVIDIA_API_KEY`, their base-URL variables, `CLAUDE_CODE_USE_BEDROCK`, and the `AWS_*` credential variables) is rejected at run time, as are names that control the host process (`PATH`, `DOCKER_*`, proxy variables, `SKILLEVALUATOR_*`, and similar). See the blocked-names table in [Providers & Credentials](configuration.mdx#tier-3-credentials-two-roles). With NVIDIA Build, one exported `NVIDIA_API_KEY` covers both the evaluator and the agents in the `docker` and `local` env-modes.
 </Warning>
 
 ## See also

@@ -62,6 +62,8 @@ _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _HEX_DIGIT_BYTES = frozenset(b"0123456789abcdefABCDEF")
 _UNRESERVED_BYTES = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 _NO_CUSTOM_TEMPERATURE_MODEL_IDS = frozenset({"claude-mythos-preview"})
+ANTHROPIC_AUTH_MODES = frozenset({"auto", "api_key", "oauth"})
+ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20"
 _ANTHROPIC_BEDROCK_PREFIX_RE = re.compile(r"^(?:(?:[a-z]{2}|global)\.)?anthropic\.")
 _VERSIONED_CLAUDE_MODEL_RE = re.compile(
     r"^claude-[a-z][a-z-]*-(?P<major>\d+)"
@@ -95,6 +97,61 @@ class ProviderConfigurationError(ValueError):
 
 
 @dataclass(frozen=True)
+class AnthropicAuth:
+    """Resolved Anthropic credential and transport mode."""
+
+    mode: str
+    token: str
+    source_env: str
+
+    def child_environment(self, environ: Mapping[str, str] | None = None) -> dict[str, str]:
+        """Return a child environment with only the selected Anthropic credential."""
+        environment = dict(environ or {})
+        environment.pop("ANTHROPIC_API_KEY", None)
+        environment.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+        environment.pop("ANTHROPIC_AUTH_TOKEN", None)
+        if self.mode == "api_key":
+            environment["ANTHROPIC_API_KEY"] = self.token
+        else:
+            environment["CLAUDE_CODE_OAUTH_TOKEN"] = self.token
+        return environment
+
+
+def resolve_anthropic_auth(
+    environ: Mapping[str, str] | None = None,
+    auth_mode: str | None = "auto",
+) -> AnthropicAuth:
+    """Resolve Anthropic API-key or OAuth credentials with stable precedence."""
+    env = _environment(environ)
+    mode = (auth_mode or "auto").strip().lower()
+    if mode not in ANTHROPIC_AUTH_MODES:
+        raise ProviderConfigurationError("Anthropic auth mode must be one of: api_key, auto, oauth.")
+
+    api_key = env.get("ANTHROPIC_API_KEY", "").strip()
+    oauth_credentials = (
+        ("CLAUDE_CODE_OAUTH_TOKEN", env.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()),
+        ("ANTHROPIC_AUTH_TOKEN", env.get("ANTHROPIC_AUTH_TOKEN", "").strip()),
+    )
+    if mode in {"auto", "api_key"} and api_key:
+        return AnthropicAuth("api_key", api_key, "ANTHROPIC_API_KEY")
+    if mode in {"auto", "oauth"}:
+        for source, token in oauth_credentials:
+            if token:
+                return AnthropicAuth("oauth", token, source)
+
+    required = (
+        "ANTHROPIC_API_KEY"
+        if mode == "api_key"
+        else "CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_AUTH_TOKEN"
+        if mode == "oauth"
+        else "ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN"
+    )
+    raise ProviderConfigurationError(
+        f"{required} is required for Anthropic authentication (auth mode: {mode})."
+    )
+
+
+@dataclass(frozen=True)
 class ProviderConfig:
     """Resolved provider values safe to pass to the relevant SDK."""
 
@@ -106,11 +163,15 @@ class ProviderConfig:
     region: str | None = None
     credential_env: str | None = None
     base_url_env: str | None = None
+    auth_mode: str | None = None
 
     def child_environment(self) -> dict[str, str]:
         """Return this provider's public credential settings for a child process."""
         environment: dict[str, str] = {}
-        if self.credential_env and self.api_key:
+        if self.provider == "anthropic" and self.api_key:
+            credential_env = "CLAUDE_CODE_OAUTH_TOKEN" if self.auth_mode == "oauth" else "ANTHROPIC_API_KEY"
+            environment[credential_env] = self.api_key
+        elif self.credential_env and self.api_key:
             environment[self.credential_env] = self.api_key
 
         if self.base_url_env and self.base_url:
@@ -127,7 +188,11 @@ class ProviderConfig:
         return environment
 
 
-def resolve_llm_provider(environ: Mapping[str, str] | None = None) -> ProviderConfig:
+def resolve_llm_provider(
+    environ: Mapping[str, str] | None = None,
+    *,
+    auth_mode: str | None = "auto",
+) -> ProviderConfig:
     """Resolve the public provider used for LLM-backed checks and judging."""
     env = _environment(environ)
     provider = _selected_provider(env, "SKILL_EVAL_LLM_PROVIDER")
@@ -151,14 +216,16 @@ def resolve_llm_provider(environ: Mapping[str, str] | None = None) -> ProviderCo
             base_url_env="OPENAI_BASE_URL",
         )
     if provider == "anthropic":
+        auth = resolve_anthropic_auth(env, auth_mode)
         return ProviderConfig(
             provider=provider,
             model=model,
-            api_key=_required(env, "ANTHROPIC_API_KEY"),
+            api_key=auth.token,
             base_url=_anthropic_base_url(env),
             litellm_model=f"anthropic/{model}",
-            credential_env="ANTHROPIC_API_KEY",
+            credential_env=auth.source_env,
             base_url_env="ANTHROPIC_BASE_URL",
+            auth_mode=auth.mode,
         )
     if provider == "nv_build":
         return ProviderConfig(
@@ -426,9 +493,12 @@ def _selected_provider(environ: Mapping[str, str], variable: str) -> str:
             ("nv_build", "NVIDIA_API_KEY"),
             ("openai", "OPENAI_API_KEY"),
             ("anthropic", "ANTHROPIC_API_KEY"),
+            ("anthropic", "CLAUDE_CODE_OAUTH_TOKEN"),
+            ("anthropic", "ANTHROPIC_AUTH_TOKEN"),
         )
         if environ.get(credential, "").strip()
     ]
+    available = list(dict.fromkeys(available))
     if len(available) > 1:
         choices = _SUPPORTED_PROVIDERS
         if "EMBEDDING" in variable:
@@ -445,7 +515,7 @@ def _selected_provider(environ: Mapping[str, str], variable: str) -> str:
     alternatives = "  openai     -> OPENAI_API_KEY\n"
     # Anthropic/Bedrock have no embedding models; do not suggest them here.
     if "EMBEDDING" not in variable:
-        alternatives += "  anthropic  -> ANTHROPIC_API_KEY\n"
+        alternatives += "  anthropic  -> ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_AUTH_TOKEN\n"
     raise ProviderConfigurationError(
         "No provider is configured.\n\n"
         "For NVIDIA Build, set:\n"
