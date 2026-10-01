@@ -760,6 +760,8 @@ def credential_probe_disposition(
         failure_kind = ModelCatalogFailureKind.UNKNOWN
 
     if failure_kind == ModelCatalogFailureKind.AUTHENTICATION:
+        if provider.provider.casefold() == "anthropic" and getattr(provider, "auth_mode", None) == "oauth":
+            return CredentialProbeDisposition.DEGRADED
         return (
             CredentialProbeDisposition.FATAL
             if provider.provider.casefold() == "bedrock" or _is_native_catalog_endpoint(provider)
@@ -775,6 +777,8 @@ def credential_probe_disposition(
             else CredentialProbeDisposition.DEGRADED
         )
     if failure_kind == ModelCatalogFailureKind.AUTHORIZATION:
+        if provider.provider.casefold() == "anthropic" and getattr(provider, "auth_mode", None) == "oauth":
+            return CredentialProbeDisposition.DEGRADED
         if provider.provider == "bedrock" or provider.provider.casefold() in {"openai", "openai-compatible"}:
             # ListFoundationModels permission is distinct from InvokeModel. OpenAI
             # restricted keys can likewise allow Responses while denying Models.
@@ -1381,6 +1385,14 @@ def _probe_bedrock_model_with_deadline(
 
 def probe_model(provider: ProviderConfig, *, timeout_seconds: float = 15.0) -> ModelProbeResult:
     """Check the selected model against the provider catalog within one deadline."""
+    if provider.provider.casefold() == "anthropic" and getattr(provider, "auth_mode", None) == "oauth":
+        return ModelProbeResult(
+            False,
+            provider.provider,
+            provider.model,
+            "Anthropic OAuth tokens cannot access the model catalog; skipping catalog verification",
+            failure_kind=ModelCatalogFailureKind.UNSUPPORTED,
+        )
     if provider.provider == "bedrock":
         return _probe_bedrock_model_with_deadline(provider, timeout_seconds=timeout_seconds)
     if (

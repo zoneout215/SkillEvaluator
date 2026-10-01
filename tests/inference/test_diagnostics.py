@@ -69,6 +69,19 @@ def test_transport_and_response_errors_do_not_echo_raw_content(exception, expect
     assert "private-token" not in diagnostic
 
 
+def test_anthropic_oauth_rate_limit_explains_system_prompt_and_subscription(monkeypatch):
+    monkeypatch.setenv("SKILL_EVAL_LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    exception = APIStatusError("rejected", response=httpx.Response(429, request=request), body={})
+
+    diagnostic = llm_failure_diagnostic(exception)
+
+    assert "Claude Code system prompt" in diagnostic
+    assert "subscription limits" in diagnostic
+
+
 @pytest.mark.parametrize(
     "model",
     [

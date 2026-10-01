@@ -71,7 +71,13 @@ def llm_failure_diagnostic(exc: Exception) -> str:
                 "Model or endpoint unavailable. Check SKILL_EVAL_LLM_MODEL against the provider's available models."
             )
         elif status == 429:
-            remedy = "The LLM provider rejected the request due to rate or quota limits. Check quota and retry later."
+            if _anthropic_oauth_is_selected():
+                remedy = (
+                    "Anthropic OAuth requests require the Claude Code system prompt and are subject to subscription "
+                    "limits. Check the prompt prefix and subscription limits, then retry."
+                )
+            else:
+                remedy = "The LLM provider rejected the request due to rate or quota limits. Check quota and retry later."
         elif status in (400, 422):
             remedy = "The LLM provider rejected the request. Check the selected model and supported request parameters."
         elif status >= 500:
@@ -92,3 +98,13 @@ def llm_failure_diagnostic(exc: Exception) -> str:
             "LLM configuration or response was invalid. Check configuration and the model's structured-output support."
         )
     return "Unexpected LLM request error. Check the selected provider and model configuration, then retry."
+
+
+def _anthropic_oauth_is_selected() -> bool:
+    try:
+        from skillevaluator.provider_config import resolve_llm_provider
+
+        config = resolve_llm_provider()
+    except Exception:
+        return False
+    return config.provider == "anthropic" and config.auth_mode == "oauth"

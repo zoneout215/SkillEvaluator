@@ -482,8 +482,29 @@ class TestCompletions:
         call_kwargs = mock_anthropic.messages.create.call_args.kwargs
         assert call_kwargs["model"] == CHAT_DEFAULT_ANTHROPIC
         assert call_kwargs["max_tokens"] == expected_max_tokens
+        assert call_kwargs["system"] == "system"
         assert "max_completion_tokens" not in call_kwargs
         assert "temperature" not in call_kwargs
+
+    def test_anthropic_oauth_completion_prefixes_claude_code_system_prompt(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from skillevaluator.provider_config import ANTHROPIC_OAUTH_SYSTEM_PREFIX
+
+        monkeypatch.setenv("SKILL_EVAL_LLM_PROVIDER", "anthropic")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        mock_anthropic = MagicMock()
+        mock_anthropic.messages.create.return_value.content = [SimpleNamespace(type="text", text="Done")]
+
+        with patch("anthropic.Anthropic", return_value=mock_anthropic):
+            LLMClient().completions("original system prompt", "user")
+
+        assert mock_anthropic.messages.create.call_args.kwargs["system"] == [
+            {"type": "text", "text": ANTHROPIC_OAUTH_SYSTEM_PREFIX},
+            {"type": "text", "text": "original system prompt"},
+        ]
 
     def test_older_anthropic_model_preserves_custom_temperature(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SKILL_EVAL_LLM_PROVIDER", "anthropic")

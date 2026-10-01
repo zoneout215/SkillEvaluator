@@ -355,6 +355,11 @@ class CatalogModel:
 
 def fetch_model_records(config: ProviderConfig, timeout_seconds: float = 15.0) -> tuple[ModelRecord, ...]:
     """Fetch and normalize the selected provider's ``/models`` catalog."""
+    if config.provider.casefold() == "anthropic" and getattr(config, "auth_mode", None) == "oauth":
+        raise ModelCatalogError(
+            "Anthropic OAuth tokens cannot access the model catalog",
+            kind=ModelCatalogFailureKind.UNSUPPORTED,
+        )
     _validate_timeout(timeout_seconds)
     url, headers = _request_settings(config)
     records: list[ModelRecord] = []
@@ -453,6 +458,11 @@ def fetch_anthropic_model_record(
     timeout_seconds: float = 15.0,
 ) -> ModelRecord:
     """Resolve one Anthropic model ID or alias through its native endpoint."""
+    if config.provider.casefold() == "anthropic" and getattr(config, "auth_mode", None) == "oauth":
+        raise ModelCatalogError(
+            "Anthropic OAuth tokens cannot access the model catalog",
+            kind=ModelCatalogFailureKind.UNSUPPORTED,
+        )
     _validate_timeout(timeout_seconds)
     if config.provider != "anthropic":
         raise ModelCatalogError(

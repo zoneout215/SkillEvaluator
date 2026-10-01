@@ -30,9 +30,11 @@ Fix contract under test:
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
+from urllib.error import HTTPError
 
 import pytest
 
@@ -548,6 +550,7 @@ def test_template_anthropic_oauth_request_uses_bearer_beta_headers(monkeypatch):
     def fake_urlopen(request, timeout):
         assert timeout == 90
         captured.update(request.headers)
+        captured["payload"] = json.loads(request.data)
         return Response()
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -559,7 +562,28 @@ def test_template_anthropic_oauth_request_uses_bearer_beta_headers(monkeypatch):
     assert (content, error) == ("Done", None)
     assert captured["Authorization"] == "Bearer " + "test-oauth-token"
     assert captured["Anthropic-beta"] == "oauth-2025-04-20"
+    assert captured["payload"]["system"] == [
+        {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."}
+    ]
     assert "X-api-key" not in captured
+
+
+def test_template_anthropic_oauth_rate_limit_explains_requirements(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("SKILL_EVAL_LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token")
+    error = HTTPError(
+        "https://api.anthropic.com/v1/messages",
+        429,
+        "Too Many Requests",
+        None,
+        io.BytesIO(b'{"type":"error","error":{"type":"rate_limit_error"}}'),
+    )
+
+    detail = eval_template._format_http_error(error)
+
+    assert "Claude Code system prompt" in detail
+    assert "subscription limits" in detail
 
 
 @pytest.mark.parametrize(

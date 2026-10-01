@@ -1114,6 +1114,7 @@ def _agent_provider_config(
         base_url=evaluator_provider.base_url,
         litellm_model=f"{litellm_prefix}/{resolved_model}",
         region=getattr(evaluator_provider, "region", None),
+        auth_mode=getattr(evaluator_provider, "auth_mode", None),
     )
 
 
