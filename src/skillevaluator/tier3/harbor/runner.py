@@ -2070,7 +2070,7 @@ def _run_harbor_eval_impl(
     )
 
     probe_targets: dict[
-        tuple[str, str, str | None, str | None, str | None],
+        tuple[str, str, str | None, str | None, str | None, str | None],
         tuple[ProviderConfig, list[str]],
     ] = {}
     probe_degraded: list[str] = []
@@ -2084,6 +2084,7 @@ def _run_harbor_eval_impl(
             selected_provider.api_key,
             selected_provider.base_url,
             selected_provider.region,
+            selected_provider.auth_mode,
         )
         target = probe_targets.get(route_key)
         if target is None:
@@ -2128,6 +2129,7 @@ def _run_harbor_eval_impl(
                     region=getattr(provider, "region", None),
                     credential_env=getattr(provider, "credential_env", None),
                     base_url_env=getattr(provider, "base_url_env", None),
+                    auth_mode=getattr(provider, "auth_mode", None),
                 ),
             )
 

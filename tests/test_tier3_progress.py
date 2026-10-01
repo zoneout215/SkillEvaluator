@@ -1041,6 +1041,64 @@ def test_credential_validation_includes_distinct_standard_grading_route(
     }
 
 
+def test_oauth_mode_is_preserved_for_standard_grader_catalog_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from skillevaluator.tier3.harbor import runtime_preflight
+
+    actual_probe_model = runtime_preflight.probe_model
+    probe_calls: list[tuple[Any, Any]] = []
+
+    def probe(selected_provider):
+        result = actual_probe_model(selected_provider)
+        probe_calls.append((selected_provider, result))
+        return result
+
+    runner, skill = _stub_runner(
+        monkeypatch,
+        tmp_path,
+        model_probe=probe,
+        provider_name="anthropic",
+    )
+    runner.resolve_llm_provider().auth_mode = "oauth"
+    monkeypatch.setattr(
+        runner,
+        "_provider_environment",
+        lambda _provider: {
+            "CLAUDE_CODE_OAUTH_TOKEN": "oauth-runtime-secret",
+            "LLM_JUDGE_MODEL": "claude-3-7-sonnet-latest",
+        },
+    )
+
+    result = runner.run_harbor_eval(
+        skill,
+        ["claude-code"],
+        agent_models={"claude-code": "anthropic/claude-sonnet-4-5"},
+        output_dir=tmp_path / "results",
+        agent_runtime_preflight=False,
+    )
+
+    assert "error" not in result
+    assert {selected_provider.model for selected_provider, _probe in probe_calls} == {
+        "claude-sonnet-4-5",
+        "claude-3-7-sonnet-latest",
+    }
+    assert all(selected_provider.auth_mode == "oauth" for selected_provider, _probe in probe_calls)
+    assert all(
+        probe_result.failure_kind == runtime_preflight.ModelCatalogFailureKind.UNSUPPORTED
+        for _selected_provider, probe_result in probe_calls
+    )
+    assert result["run_config"]["credential_validation"]["status"] == "degraded"
+    grader_target = next(
+        target
+        for target in result["run_config"]["credential_validation"]["targets"]
+        if target["labels"] == ["standard grader"]
+    )
+    assert grader_target["status"] == "inconclusive"
+    assert "skipping catalog verification" in grader_target["detail"]
+
+
 def test_missing_native_task_source_stops_before_credential_probes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
