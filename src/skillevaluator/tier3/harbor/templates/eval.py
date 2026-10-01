@@ -1220,6 +1220,12 @@ def _format_http_error_with_fallback(error):
     if body:
         raw_detail = f"{raw_detail} - {body}"
         safe_detail = f"{safe_detail} - {_redact_configured_credentials(body)[:500]}"
+    oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") or os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+    if error.code == 429 and _public_provider() == "anthropic" and oauth_token and not os.environ.get("ANTHROPIC_API_KEY"):
+        safe_detail += (
+            ". Anthropic OAuth requests require the Claude Code system prompt and are subject to subscription limits; "
+            "check both before retrying."
+        )
     return _redact_configured_credentials(safe_detail), _should_try_fallback(raw_detail)
 
 
@@ -1509,6 +1515,10 @@ def _call_anthropic(prompt, model, max_tokens, temperature):
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
     }
+    if not api_key:
+        payload["system"] = [
+            {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."}
+        ]
     if temperature is not None and _supports_custom_temperature(model):
         payload["temperature"] = temperature
     headers = {

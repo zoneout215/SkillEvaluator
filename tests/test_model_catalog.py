@@ -19,6 +19,7 @@ import pytest
 from skillevaluator import model_catalog
 from skillevaluator.model_catalog import (
     ModelCatalogError,
+    ModelCatalogFailureKind,
     ModelRecord,
     fetch_anthropic_model_record,
     fetch_model_records,
@@ -47,6 +48,7 @@ def _provider(
     model: str = "configured-model",
     api_key: str | None = "top-secret-key",
     base_url: str | None = None,
+    auth_mode: str | None = None,
 ) -> ProviderConfig:
     defaults = {
         "nv_build": "https://integrate.api.nvidia.com/v1",
@@ -68,6 +70,7 @@ def _provider(
             "anthropic": "ANTHROPIC_API_KEY",
         }.get(provider),
         region="us-west-2" if provider == "bedrock" else None,
+        auth_mode=auth_mode,
     )
 
 
@@ -112,6 +115,22 @@ def test_fetch_model_records_uses_anthropic_native_headers(monkeypatch) -> None:
     assert captured["headers"]["X-api-key"] == "top-secret-key"
     assert captured["headers"]["Anthropic-version"] == "2023-06-01"
     assert "Authorization" not in captured["headers"]
+
+
+@pytest.mark.parametrize("single_model", [False, True])
+def test_anthropic_oauth_model_catalog_calls_are_unsupported(monkeypatch, single_model: bool) -> None:
+    monkeypatch.setattr(
+        model_catalog,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("OAuth must not query the catalog")),
+    )
+
+    with pytest.raises(ModelCatalogError, match="Anthropic OAuth tokens cannot access the model catalog") as caught:
+        if single_model:
+            fetch_anthropic_model_record(_provider("anthropic", auth_mode="oauth"), "claude-opus-5")
+        else:
+            fetch_model_records(_provider("anthropic", auth_mode="oauth"))
+    assert caught.value.kind == ModelCatalogFailureKind.UNSUPPORTED
 
 
 def test_fetch_anthropic_model_record_encodes_alias_as_one_path_segment(monkeypatch) -> None:
