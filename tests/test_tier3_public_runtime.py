@@ -659,6 +659,27 @@ def test_doctor_reports_missing_independent_cross_provider_credential(monkeypatc
     assert "ANTHROPIC_API_KEY" in result.output
 
 
+@pytest.mark.parametrize("token_name", ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"])
+def test_doctor_accepts_anthropic_oauth_token_and_skips_catalog(monkeypatch, token_name: str) -> None:
+    monkeypatch.setenv("SKILL_EVAL_LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv(token_name, "test-oauth-token")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    other_token = "ANTHROPIC_AUTH_TOKEN" if token_name == "CLAUDE_CODE_OAUTH_TOKEN" else "CLAUDE_CODE_OAUTH_TOKEN"
+    monkeypatch.delenv(other_token, raising=False)
+    monkeypatch.setattr(tier3_commands, "_check_prerequisites", lambda **_kwargs: [])
+
+    result = CliRunner().invoke(
+        cli,
+        ["doctor", "--agents", "claude-code", "--env-mode", "docker", "--verify-models"],
+    )
+
+    assert result.exit_code == 0
+    assert "claude-code model" in result.output
+    assert "warn" in result.output
+    assert "cannot access the model catalog" in " ".join(result.output.split())
+    assert "ANTHROPIC_API_KEY is required" not in result.output
+
+
 def test_nvidia_build_docker_codex_uses_the_compatibility_bridge() -> None:
     provider = ProviderConfig(
         provider="nv_build",

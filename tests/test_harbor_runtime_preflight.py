@@ -59,7 +59,7 @@ from botocore.exceptions import (
 )
 from botocore.session import Session as BotocoreSession
 
-from skillevaluator.model_catalog import ModelCatalogError, ModelRecord
+from skillevaluator.model_catalog import ModelCatalogError, ModelCatalogFailureKind, ModelRecord
 from skillevaluator.provider_config import ProviderConfig
 from skillevaluator.tier3.harbor import runtime_preflight
 from skillevaluator.tier3.harbor.collector import validate_harbor_job_result
@@ -754,6 +754,49 @@ def test_model_probe_reports_safe_shared_catalog_error(monkeypatch) -> None:
     assert "secret-key" not in result.detail
     assert getattr(result, "failure_kind", None) == "authentication"
     assert getattr(result, "http_status", None) == 401
+
+
+def test_anthropic_oauth_model_probe_skips_catalog_and_degrades(monkeypatch) -> None:
+    monkeypatch.setattr(
+        runtime_preflight,
+        "fetch_model_records",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("OAuth must not query the catalog")),
+    )
+    provider = ProviderConfig(
+        provider="anthropic",
+        model="claude-opus-5",
+        api_key="oauth-token",
+        base_url="https://api.anthropic.com",
+        litellm_model="anthropic/claude-opus-5",
+        auth_mode="oauth",
+    )
+
+    result = runtime_preflight.probe_model(provider)
+
+    assert result.detail == "Anthropic OAuth tokens cannot access the model catalog; skipping catalog verification"
+    assert result.failure_kind == ModelCatalogFailureKind.UNSUPPORTED
+    assert runtime_preflight.credential_probe_disposition(provider, result) == (
+        runtime_preflight.CredentialProbeDisposition.DEGRADED
+    )
+
+
+@pytest.mark.parametrize("failure_kind", [ModelCatalogFailureKind.AUTHENTICATION, ModelCatalogFailureKind.AUTHORIZATION])
+def test_anthropic_oauth_catalog_auth_failures_degrade(failure_kind) -> None:
+    provider = ProviderConfig(
+        provider="anthropic",
+        model="claude-opus-5",
+        api_key="oauth-token",
+        base_url="https://api.anthropic.com",
+        litellm_model="anthropic/claude-opus-5",
+        auth_mode="oauth",
+    )
+    probe = runtime_preflight.ModelProbeResult(
+        False, "anthropic", "claude-opus-5", "catalog auth failed", failure_kind=failure_kind
+    )
+
+    assert runtime_preflight.credential_probe_disposition(provider, probe) == (
+        runtime_preflight.CredentialProbeDisposition.DEGRADED
+    )
 
 
 def test_anthropic_model_probe_resolves_alias_omitted_from_listing(monkeypatch) -> None:

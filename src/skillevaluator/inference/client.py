@@ -29,6 +29,7 @@ from skillevaluator.inference.types import EmptyLLMResponseError, LLMClientError
 from skillevaluator.logging_config import get_logger
 from skillevaluator.provider_config import (
     ANTHROPIC_OAUTH_BETA,
+    ANTHROPIC_OAUTH_SYSTEM_PREFIX,
     OPENAI_BASE_URL,
     ProviderConfig,
     ProviderConfigurationError,
@@ -252,10 +253,15 @@ class LLMClient:
         config = self._resolved_config()
         client = self._get_client()
         if config.provider == "anthropic":
+            system: str | list[dict[str, str]] = system_prompt
+            if config.auth_mode == "oauth":
+                system = [{"type": "text", "text": ANTHROPIC_OAUTH_SYSTEM_PREFIX}]
+                if system_prompt:
+                    system.append({"type": "text", "text": system_prompt})
             call_kwargs: dict[str, Any] = {
                 "model": config.model,
                 "max_tokens": self._max_tokens or 4096,
-                "system": system_prompt,
+                "system": system,
                 "messages": [{"role": "user", "content": user_prompt}],
                 **_temperature_kwargs(config.model, self._temperature),
             }

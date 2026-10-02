@@ -64,6 +64,7 @@ _UNRESERVED_BYTES = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 _NO_CUSTOM_TEMPERATURE_MODEL_IDS = frozenset({"claude-mythos-preview"})
 ANTHROPIC_AUTH_MODES = frozenset({"auto", "api_key", "oauth"})
 ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20"
+ANTHROPIC_OAUTH_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
 _ANTHROPIC_BEDROCK_PREFIX_RE = re.compile(r"^(?:(?:[a-z]{2}|global)\.)?anthropic\.")
 _VERSIONED_CLAUDE_MODEL_RE = re.compile(
     r"^claude-[a-z][a-z-]*-(?P<major>\d+)"
